@@ -7,7 +7,7 @@ export async function chatBridge(prompt, messages) {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ prompt, messages }),
+      body: JSON.stringify({ prompt, messages: messages }),
     });
 
     if (!response.ok) {
@@ -17,8 +17,9 @@ export async function chatBridge(prompt, messages) {
     const result = await response.json();
 
     if (result.body.errorMessage) {
+      console.log(`here ${result.body.errorMessage}`);
       return {
-        errorMessage: errorMessage,
+        errorMessage: result.body.errorMessage,
       };
     }
 
@@ -26,6 +27,7 @@ export async function chatBridge(prompt, messages) {
       response: result.body.message,
     };
   } catch (error) {
+    console.log(`here2 ${error}`);
     return {
       errorMessage: JSON.stringify(error),
     };

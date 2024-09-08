@@ -32,18 +32,21 @@ export default function ChatScreen() {
       setInputMessage("");
       setScreenshots([]);
 
-      let messagesToSend = messages.map(({ role, parts }) => ({ role, parts }));
+      let partsOnly = false;
+      console.log(`Messages: ${JSON.stringify(messages)}`);
+      let messagesToSend = await processMessages(messages, partsOnly);
+      console.log(`New message: ${JSON.stringify(newMessage)}`);
+      partsOnly = true;
+      let promptToSend = await processMessages([newMessage], partsOnly);
       // Here you would typically send the message to your LLM backend
-      let response = await chatBridge(newMessage.parts, messagesToSend);
+      let response = await chatBridge(promptToSend[0], messagesToSend);
       console.log(response);
-      setTimeout(() => {
-        const botResponse = {
-          id: Date.now() + 1,
-          parts: response.response,
-          role: "model",
-        };
-        setMessages((prevMessages) => [...prevMessages, botResponse]);
-      }, 1000);
+      const botResponse = {
+        id: Date.now() + 1,
+        parts: response.response,
+        role: "model",
+      };
+      setMessages((prevMessages) => [...prevMessages, botResponse]);
     }
   };
 
@@ -225,5 +228,50 @@ export default function ChatScreen() {
         </div>
       )}
     </div>
+  );
+}
+
+async function convertFileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function convertBlobUrlToBase64(blobUrl) {
+  const response = await fetch(blobUrl);
+  const blob = await response.blob();
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function processMessages(messages, partsOnly = false) {
+  return Promise.all(
+    messages.map(async ({ role, parts, screenshots }) => {
+      let newParts = [parts];
+
+      // Convert screenshots to base64 if they exist
+      if (screenshots && screenshots.length > 0) {
+        const base64Screenshots = await Promise.all(
+          screenshots.map((url) => convertBlobUrlToBase64(url)) // Convert blob URL to base64
+        );
+
+        // Create new parts array with the original text as the first element
+        newParts = [parts, ...base64Screenshots];
+      }
+
+      if (partsOnly) {
+        return newParts; // Return the array of parts only
+      }
+
+      return { role, parts: newParts }; // Return object with role and parts
+    })
   );
 }
