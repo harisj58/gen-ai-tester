@@ -1,6 +1,9 @@
 "use client";
 import React, { useState, useRef, useEffect } from "react";
 import Image from "next/image";
+import { chatBridge } from "./chatBridge";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export default function ChatScreen() {
   const [messages, setMessages] = useState([]);
@@ -28,12 +31,16 @@ export default function ChatScreen() {
       setMessages([...messages, newMessage]);
       setInputMessage("");
       setScreenshots([]);
+
+      let messagesToSend = messages.map(({ role, parts }) => ({ role, parts }));
       // Here you would typically send the message to your LLM backend
+      let response = await chatBridge(newMessage.parts, messagesToSend);
+      console.log(response);
       setTimeout(() => {
         const botResponse = {
           id: Date.now() + 1,
-          parts: "Thank you for your message. I'm processing your request...",
-          role: "bot",
+          parts: response.response,
+          role: "model",
         };
         setMessages((prevMessages) => [...prevMessages, botResponse]);
       }, 1000);
@@ -84,7 +91,9 @@ export default function ChatScreen() {
                   : "bg-neutral-950 text-white"
               }`}
             >
-              <p>{message.parts}</p>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {message.parts}
+              </ReactMarkdown>
               {message.screenshots && message.screenshots.length > 0 && (
                 <div className="mt-2 mb-2 grid grid-cols-2 gap-2">
                   {message.screenshots.slice(0, 3).map((screenshot, index) => (
