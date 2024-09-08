@@ -11,6 +11,7 @@ export default function ChatScreen() {
   const [screenshots, setScreenshots] = useState([]);
   const [showCarousel, setShowCarousel] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -28,25 +29,26 @@ export default function ChatScreen() {
         screenshots: screenshots.map((file) => URL.createObjectURL(file)),
         role: "user",
       };
+
       setMessages([...messages, newMessage]);
       setInputMessage("");
       setScreenshots([]);
+      setIsLoading(true);
 
       let partsOnly = false;
-      console.log(`Messages: ${JSON.stringify(messages)}`);
       let messagesToSend = await processMessages(messages, partsOnly);
-      console.log(`New message: ${JSON.stringify(newMessage)}`);
       partsOnly = true;
       let promptToSend = await processMessages([newMessage], partsOnly);
-      // Here you would typically send the message to your LLM backend
+
+      // Send message and receive response
       let response = await chatBridge(promptToSend[0], messagesToSend);
-      console.log(response);
       const botResponse = {
         id: Date.now() + 1,
         parts: response.response,
         role: "model",
       };
       setMessages((prevMessages) => [...prevMessages, botResponse]);
+      setIsLoading(false);
     }
   };
 
@@ -138,6 +140,13 @@ export default function ChatScreen() {
             </div>
           </div>
         ))}
+        {isLoading && (
+          <div className="flex justify-start">
+            <div className="bg-neutral-950 text-white px-4 py-2 rounded-lg">
+              <LoadingAnimation />
+            </div>
+          </div>
+        )}
         <div ref={messagesEndRef} />
       </div>
 
@@ -146,7 +155,8 @@ export default function ChatScreen() {
         <div className="flex space-x-3">
           <button
             onClick={() => fileInputRef.current.click()}
-            className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={isLoading}
           >
             📎
           </button>
@@ -157,22 +167,25 @@ export default function ChatScreen() {
             accept="image/*"
             onChange={handleScreenshotUpload}
             className="hidden"
+            disabled={isLoading}
           />
           <input
             type="text"
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             placeholder="Type your message here..."
-            className="flex-1 p-2 focus:ring-indigo-500 focus:border-indigo-500 block w-full rounded-md sm:text-sm border-gray-300 text-gray-900"
+            className="flex-1 p-2 focus:ring-indigo-500 focus:border-indigo-500 block w-full rounded-md sm:text-sm border-gray-300 text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
             onKeyPress={(e) => {
-              if (e.key === "Enter") {
+              if (e.key === "Enter" && !isLoading) {
                 handleSendMessage();
               }
             }}
+            disabled={isLoading}
           />
           <button
             onClick={handleSendMessage}
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={isLoading}
           >
             Send
           </button>
@@ -231,6 +244,25 @@ export default function ChatScreen() {
   );
 }
 
+function LoadingAnimation() {
+  return (
+    <div className="flex space-x-1">
+      <div
+        className="w-2 h-2 bg-white rounded-full animate-bounce"
+        style={{ animationDelay: "0s" }}
+      ></div>
+      <div
+        className="w-2 h-2 bg-white rounded-full animate-bounce"
+        style={{ animationDelay: "0.2s" }}
+      ></div>
+      <div
+        className="w-2 h-2 bg-white rounded-full animate-bounce"
+        style={{ animationDelay: "0.4s" }}
+      ></div>
+    </div>
+  );
+}
+
 async function convertFileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -260,7 +292,10 @@ async function processMessages(messages, partsOnly = false) {
       // Convert screenshots to base64 if they exist
       if (screenshots && screenshots.length > 0) {
         const base64Screenshots = await Promise.all(
-          screenshots.map((url) => convertBlobUrlToBase64(url)) // Convert blob URL to base64
+          screenshots.map(async (url) => {
+            const base64DataUrl = await convertBlobUrlToBase64(url); // Convert blob URL to base64
+            return base64DataUrl.split(",")[1]; // Strip the metadata (data:image/png;base64,)
+          })
         );
 
         // Create new parts array with the original text as the first element
