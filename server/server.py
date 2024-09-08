@@ -3,6 +3,10 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 import os
 import json
+import base64
+import re
+import io
+from PIL import Image
 
 load_dotenv()
 
@@ -108,7 +112,7 @@ async def get_response(req: Request):
     }
 
     messages = payload.get("messages", [])
-    prompt = payload.get("prompt", "")
+    prompt = payload.get("prompt", [])
 
     if not prompt:
         resp["body"]["statusCode"] = 400
@@ -117,6 +121,21 @@ async def get_response(req: Request):
         return json.loads(json.dumps(resp, default=str))
 
     try:
+        for message in messages:
+            for i, part in enumerate(message["parts"]):
+                if part != "" and is_valid_base64(part):
+                    decoded_string = io.BytesIO(base64.b64decode(part.split(",")[1]))
+                    img = Image.open(decoded_string)
+
+                    message["parts"][i] = img
+
+        for i, part in enumerate(prompt):
+            if part != "" and is_valid_base64(part):
+                decoded_string = io.BytesIO(base64.b64decode(part.split(",")[1]))
+                img = Image.open(decoded_string)
+
+                prompt[i] = img
+
         chat = model.start_chat(history=messages)
         response = await chat.send_message_async(prompt)
 
@@ -126,3 +145,16 @@ async def get_response(req: Request):
         resp["body"]["errorMessage"] = e.with_traceback(e.__traceback__)
 
     return json.loads(json.dumps(resp, default=str))
+
+
+def is_valid_base64(s):
+    base64_pattern = re.compile(r"^[A-Za-z0-9+/]+={0,2}$")
+
+    if not base64_pattern.match(s) or len(s) % 4 != 0:
+        return False
+
+    try:
+        base64.b64decode(s, validate=True)
+        return True
+    except (base64.binascii.Error, ValueError):
+        return False
